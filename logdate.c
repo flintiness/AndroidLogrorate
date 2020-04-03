@@ -6,55 +6,61 @@
 #include <stdio.h>
 #include <time.h>
 #include <pthread.h>
-static void *fourG_log(void * arg)
-{
-	while(1)
-	{
-                if (system("/system/bin/logcat -v time -b radio >> /data/media/fourG.log") < 0) {
-                        printf("main_log command error!\nExit process...\n");
-                       exit(EXIT_FAILURE);	
-                }
-                sleep(1);
+#include <signal.h>
 
+
+unsigned long get_file_size(const char * path_file)
+{
+	struct stat buf;
+	if(stat(path_file, &buf) < 0){
+		return -1;
 	}
-	return NULL;
+	return (unsigned long)buf.st_size;
 }
-#if 1
-static void *rorate_log(void * arg)
-{
-	struct tm *ptm;
-	time_t now;
-	int h,m,s;
-	while(1)
-	{
-		time(&now);
-		ptm = localtime(&now);
-		h = ptm->tm_hour;
-		m = ptm->tm_min;
-		s = ptm->tm_sec;
-		if(h==0 && m==0 && s==0)
-		{
-			sleep(10);
-                        system("/system/bin/logrorate -vf /system/etc/logrorate.conf");
 
+void logrorate_handler()
+{
+	int status = 0;
+	printf("start logrorate 4g log ...\n");
+	alarm(60);
+	/* if log greater than 40M start logratate */
+	if(get_file_size("/cache/4g_log/fourG.log") > (1024 * 1024 * 40)){
+		status = system("/system/bin/logrorate -vf /system/etc/logrorate.conf");
+		if(status < 0){
+			printf("error : system execute faild ... \n");
+			exit(-1);
 		}
 	}
-	return NULL;
-}
-#endif
-int main(/*int argc, char **argv*/)
-{
-    struct tm *ptm;
-    time_t now;
-    int h,m,s;
-    int err;
-    pthread_t fourG_id;
-    pthread_t rorate_id;
-    err = pthread_create(&fourG_id, NULL, fourG_log, NULL);
-    err = pthread_create(&rorate_id,NULL,rorate_log,NULL);
-    printf("enter log test mode!!!\n");
-    pthread_join(fourG_id, NULL);
-    pthread_join(rorate_id, NULL);
-    return 0;
 }
 
+int main(int argc, char * *argv)
+{
+	int status = 0;
+	
+	if(access("/cache/4g_log/fourG.log", F_OK) == 0)
+		printf("/cache/4g_log/fourG.log file exist\n");
+	else{
+		int mkt = mkdir("/cache/4g_log", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+		if(mkt < 0){
+			printf("error : create directory failed ... \n");
+			return -1;
+		}
+	}
+	/* wait 10s*/
+	sleep(10);
+	
+	signal(SIGALRM, logrorate_handler);
+	alarm(60);
+	
+	status = system("/system/bin/logcat -b radio -v time >> /cache/4g_log/fourG.log");
+	if(status < 0){
+		printf("error : logcat run faild ... \n");
+		exit(-1);
+	}
+	
+	while(1){
+		/* progress start slepp and start alarm (1 minute)*/
+		sleep(2592000);
+	}
+	return 0;
+}
